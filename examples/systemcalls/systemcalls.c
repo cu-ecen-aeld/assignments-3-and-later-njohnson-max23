@@ -1,4 +1,8 @@
 #include "systemcalls.h"
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include <fcntl.h>
 
 /**
  * @param cmd the command to execute with system()
@@ -16,6 +20,7 @@ bool do_system(const char *cmd)
  *   and return a boolean true if the system() call completed with success
  *   or false() if it returned a failure
 */
+    return (system(cmd) == 0);
 
     return true;
 }
@@ -47,7 +52,7 @@ bool do_exec(int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 /*
  * TODO:
@@ -59,9 +64,47 @@ bool do_exec(int count, ...)
  *
 */
 
+    pid_t child_pid = fork();
+
+    if(child_pid == -1)
+    {
+        /* In parent, fork call failed. */
+        perror("fork call failed");
+        return false;
+    }
+    else if(child_pid == 0)
+    {
+        /* In child */
+        int retval = execv(command[0], command);
+        if(retval == -1)
+        {
+            perror("execv failed");
+            exit(-1);
+        }
+    }
+    else
+    {
+        /* In parent */
+        int child_ret_status = 0;
+        pid_t terminated_pid = waitpid(child_pid, &child_ret_status, 0);
+
+        if(terminated_pid == child_pid)
+        {
+            if(WIFEXITED(child_ret_status))
+            {
+                printf("Child exited with status %d\n", WEXITSTATUS(child_ret_status));
+
+                if(WEXITSTATUS(child_ret_status) == 0)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
     va_end(args);
 
-    return true;
+    return false;
 }
 
 /**
@@ -82,7 +125,7 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
     command[count] = NULL;
     // this line is to avoid a compile warning before your implementation is complete
     // and may be removed
-    command[count] = command[count];
+    //command[count] = command[count];
 
 
 /*
@@ -93,7 +136,58 @@ bool do_exec_redirect(const char *outputfile, int count, ...)
  *
 */
 
+    int fd = open(outputfile, 
+                  O_WRONLY | O_CREAT | O_TRUNC,
+                  S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
+
+    pid_t child_pid = fork();
+
+    if(child_pid == -1)
+    {
+        /* In parent, fork call failed. */
+        perror("fork call failed");
+        close(fd);
+        return false;
+    }
+    else if(child_pid == 0)
+    {
+        /* In child */
+        if(dup2(fd, 1) < 0)
+        {
+            perror("stdout redirect failed");
+            close(fd);
+            exit(-1);
+        }
+
+        int retval = execv(command[0], command);
+        if(retval == -1)
+        {
+            perror("execv failed");
+            exit(-1);
+        }
+    }
+    else
+    {
+        /* In parent */
+        close(fd);
+        int child_ret_status = 0;
+        pid_t terminated_pid = waitpid(child_pid, &child_ret_status, 0);
+
+        if(terminated_pid == child_pid)
+        {
+            if(WIFEXITED(child_ret_status))
+            {
+                printf("Child exited with status %d\n", WEXITSTATUS(child_ret_status));
+
+                if(WEXITSTATUS(child_ret_status) == 0)
+                {
+                    return true;
+                }
+            }
+        }
+    }
+
     va_end(args);
 
-    return true;
+    return false;
 }
